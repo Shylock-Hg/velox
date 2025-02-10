@@ -79,17 +79,18 @@ PYBIND11_MODULE(plan_builder, m) {
       .def(
           "table_scan",
           &velox::py::PyPlanBuilder::tableScan,
-          py::arg("output") = velox::py::PyType{},
+          py::arg("output_schema") = velox::py::PyType{},
           py::arg("aliases") = py::dict{},
           py::arg("subfields") = py::dict{},
           py::arg("row_index") = "",
-          py::arg("connector_id") = "prism",
+          py::arg("connector_id") = "hive",
+          py::arg("input_files") = std::nullopt,
           py::doc(R"(
         Adds a table scan node to the plan.
 
         Args:
-          output: A RowType containing the schema to be projected out
-                  of the scan.
+          output_schema: A RowType containing the schema to be projected out
+                         of the scan.
           aliases: An optional map of aliases to apply, from the desired
                    output name to the name as defined in the file. If
                    there are aliases, `output` should be specified based
@@ -100,6 +101,23 @@ PYBIND11_MODULE(plan_builder, m) {
           row_index: If defined, creates an output column with this name
                      producing $row_ids. This name needs to be part of the
                      `output` as BIGINT.
+          connector_id: ID of the connector to use for this scan.
+          input_files: If defined, uses as the input files so that no splits
+                      will need to be added later.
+      )"))
+      .def(
+          "table_write",
+          &velox::py::PyPlanBuilder::tableWrite,
+          py::arg("output_schema"),
+          py::arg("output_file"),
+          py::arg("connector_id") = "hive",
+          py::doc(R"(
+        Adds a table write node to the plan.
+
+        Args:
+          output_schema: A RowType containing the schema to be written to
+                         the file.
+          output_file: Name of the file to be written.
           connector_id: ID of the connector to use for this scan.
       )"))
       .def(

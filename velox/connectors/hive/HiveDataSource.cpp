@@ -323,6 +323,7 @@ void HiveDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   // so we initialize it beforehand.
   splitReader_->configureReaderOptions(randomSkip_);
   splitReader_->prepareSplit(metadataFilter_, runtimeStats_);
+  readerOutputType_ = splitReader_->readerOutputType();
 }
 
 vector_size_t HiveDataSource::applyBucketConversion(
@@ -378,7 +379,12 @@ std::optional<RowVectorPtr> HiveDataSource::next(
     return nullptr;
   }
 
-  if (!output_) {
+  // Bucket conversion or delta update could add extra column to reader output.
+  auto needsExtraColumn = [&] {
+    return output_->asUnchecked<RowVector>()->childrenSize() <
+        readerOutputType_->size();
+  };
+  if (!output_ || needsExtraColumn()) {
     output_ = BaseVector::create(readerOutputType_, 0, pool_);
   }
 
@@ -512,6 +518,11 @@ std::unordered_map<std::string, RuntimeCounter> HiveDataSource::runtimeStats() {
   }
   if (numBucketConversion_ > 0) {
     res.insert({"numBucketConversion", RuntimeCounter(numBucketConversion_)});
+  }
+  for (const auto& storageStats : ioStats_->storageStats()) {
+    res.emplace(
+        storageStats.first,
+        RuntimeCounter(storageStats.second.sum, storageStats.second.unit));
   }
   return res;
 }

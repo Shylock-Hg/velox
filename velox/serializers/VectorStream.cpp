@@ -67,6 +67,8 @@ VectorStream::VectorStream(
       nullsFirst_(opts.nullsFirst),
       isLongDecimal_(type_->isLongDecimal()),
       isUuid_(isUuidType(type_)),
+      isIpAddress_(isIPAddressType(type_)),
+      isIpPrefix_(isIPPrefixType(type_)),
       opts_(opts),
       encoding_(getEncoding(encoding, vector)),
       nulls_(streamArena, true, true),
@@ -74,7 +76,7 @@ VectorStream::VectorStream(
       values_(streamArena) {
   if (initialNumRows == 0) {
     initializeHeader(typeToEncodingName(type), *streamArena);
-    if (type_->size() > 0) {
+    if (type_->size() > 0 && !isIpPrefix_) {
       hasLengths_ = true;
       children_.reserve(type_->size());
       for (int32_t i = 0; i < type_->size(); ++i) {
@@ -230,6 +232,15 @@ void VectorStream::flush(OutputStream* out) {
 
   switch (type_->kind()) {
     case TypeKind::ROW:
+      if (isIPPrefixType(type_)) {
+        writeInt32(out, nullCount_ + nonNullCount_);
+        lengths_.flush(out);
+        flushNulls(out);
+        writeInt32(out, values_.size());
+        values_.flush(out);
+        break;
+      }
+
       if (opts_.nullsFirst) {
         writeInt32(out, nullCount_ + nonNullCount_);
         flushNulls(out);
@@ -301,8 +312,8 @@ void VectorStream::clear() {
   totalLength_ = 0;
   if (hasLengths_) {
     lengths_.startWrite(lengths_.size());
-    if (type_->kind() == TypeKind::ROW || type_->kind() == TypeKind::ARRAY ||
-        type_->kind() == TypeKind::MAP) {
+    if ((type_->kind() == TypeKind::ROW && !isIpPrefix_) ||
+        type_->kind() == TypeKind::ARRAY || type_->kind() == TypeKind::MAP) {
       // The first element in the offsets in the wire format is always 0 for
       // nested types. Set upon construction/reset in case empty (no append
       // calls will be made).
@@ -353,6 +364,8 @@ void VectorStream::append(folly::Range<const int128_t*> values) {
       val = toJavaDecimalValue(value);
     } else if (isUuid_) {
       val = toJavaUuidValue(value);
+    } else if (isIpAddress_) {
+      val = reverseIpAddressByteOrder(value);
     }
     values_.append<int128_t>(folly::Range(&val, 1));
   }
@@ -370,6 +383,16 @@ void VectorStream::initializeFlatStream(
     case TypeKind::ARRAY:
       [[fallthrough]];
     case TypeKind::MAP:
+      // Velox represents ipprefix as a row, but we need
+      // to serialize the data type as varbinary to be compatible with Java
+      if (isIpPrefix_) {
+        hasLengths_ = true;
+        lengths_.startWrite(0);
+        if (values_.ranges().empty()) {
+          values_.startWrite(0);
+        }
+        break;
+      }
       hasLengths_ = true;
       children_.reserve(type_->size());
       for (int32_t i = 0; i < type_->size(); ++i) {

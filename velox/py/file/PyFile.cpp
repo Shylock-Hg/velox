@@ -14,22 +14,13 @@
  * limitations under the License.
  */
 
-#include "velox/experimental/wave/exec/ExprKernel.h"
+#include "velox/py/file/PyFile.h"
+#include <fmt/format.h>
 
-#include "velox/experimental/wave/common/Block.cuh"
-#include "velox/experimental/wave/common/CudaUtil.cuh"
-#include "velox/experimental/wave/exec/Aggregate.cuh"
-#include "velox/experimental/wave/exec/WaveCore.cuh"
+namespace facebook::velox::py {
 
-DECLARE_bool(kernel_gdb);
-
-namespace facebook::velox::wave {
-
-__global__ void
-oneReadAggregate(KernelParams params, int32_t pc, int32_t base) {
-  PROGRAM_PREAMBLE(base);
-  readAggregateKernel(&instruction[pc]._.aggregate, shared);
-  PROGRAM_EPILOGUE();
+std::string PyFile::toString() const {
+  return fmt::format("{} ({})", filePath_, fileFormat_);
 }
 
-} // namespace facebook::velox::wave
+} // namespace facebook::velox::py
