@@ -44,11 +44,12 @@ add_executable(
   ArrayRemoveTest.cpp
   ArrayShuffleTest.cpp
   ArraySortTest.cpp
+  ArrayTopNTest.cpp
   ArraysOverlapTest.cpp
   ArraySumTest.cpp
   ArrayTrimTest.cpp
   ArrayUnionTest.cpp
-  ArgGeneratorTest.cpp
+  ArgTypesGeneratorTest.cpp
   BinaryFunctionsTest.cpp
   BitwiseTest.cpp
   CardinalityTest.cpp
@@ -100,6 +101,7 @@ add_executable(
   TransformValuesTest.cpp
   TrimFunctionsTest.cpp
   TypeOfTest.cpp
+  TDigestCastTest.cpp
   URLFunctionsTest.cpp
   UuidFunctionsTest.cpp
   WidthBucketArrayTest.cpp

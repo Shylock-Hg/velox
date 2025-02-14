@@ -18,16 +18,18 @@
 #include <unordered_set>
 
 #include "velox/exec/fuzzer/PrestoQueryRunner.h"
-#include "velox/expression/fuzzer/ArgGenerator.h"
+#include "velox/expression/fuzzer/ArgTypesGenerator.h"
+#include "velox/expression/fuzzer/ArgValuesGenerators.h"
+#include "velox/expression/fuzzer/ExpressionFuzzer.h"
 #include "velox/expression/fuzzer/FuzzerRunner.h"
 #include "velox/expression/fuzzer/SpecialFormSignatureGenerator.h"
-#include "velox/functions/prestosql/fuzzer/DivideArgGenerator.h"
-#include "velox/functions/prestosql/fuzzer/FloorAndRoundArgGenerator.h"
-#include "velox/functions/prestosql/fuzzer/ModulusArgGenerator.h"
-#include "velox/functions/prestosql/fuzzer/MultiplyArgGenerator.h"
-#include "velox/functions/prestosql/fuzzer/PlusMinusArgGenerator.h"
+#include "velox/functions/prestosql/fuzzer/DivideArgTypesGenerator.h"
+#include "velox/functions/prestosql/fuzzer/FloorAndRoundArgTypesGenerator.h"
+#include "velox/functions/prestosql/fuzzer/ModulusArgTypesGenerator.h"
+#include "velox/functions/prestosql/fuzzer/MultiplyArgTypesGenerator.h"
+#include "velox/functions/prestosql/fuzzer/PlusMinusArgTypesGenerator.h"
 #include "velox/functions/prestosql/fuzzer/SortArrayTransformer.h"
-#include "velox/functions/prestosql/fuzzer/TruncateArgGenerator.h"
+#include "velox/functions/prestosql/fuzzer/TruncateArgTypesGenerator.h"
 #include "velox/functions/prestosql/registration/RegistrationFunctions.h"
 
 DEFINE_int64(
@@ -51,8 +53,11 @@ DEFINE_uint32(
 
 using namespace facebook::velox::exec::test;
 using facebook::velox::exec::test::PrestoQueryRunner;
-using facebook::velox::fuzzer::ArgGenerator;
+using facebook::velox::fuzzer::ArgTypesGenerator;
+using facebook::velox::fuzzer::ArgValuesGenerator;
+using facebook::velox::fuzzer::ExpressionFuzzer;
 using facebook::velox::fuzzer::FuzzerRunner;
+using facebook::velox::fuzzer::JsonParseArgValuesGenerator;
 using facebook::velox::test::ReferenceQueryRunner;
 
 int main(int argc, char** argv) {
@@ -105,15 +110,16 @@ int main(int argc, char** argv) {
   };
   size_t initialSeed = FLAGS_seed == 0 ? std::time(nullptr) : FLAGS_seed;
 
-  std::unordered_map<std::string, std::shared_ptr<ArgGenerator>> argGenerators =
-      {{"plus", std::make_shared<PlusMinusArgGenerator>()},
-       {"minus", std::make_shared<PlusMinusArgGenerator>()},
-       {"multiply", std::make_shared<MultiplyArgGenerator>()},
-       {"divide", std::make_shared<DivideArgGenerator>()},
-       {"floor", std::make_shared<FloorAndRoundArgGenerator>()},
-       {"round", std::make_shared<FloorAndRoundArgGenerator>()},
-       {"mod", std::make_shared<ModulusArgGenerator>()},
-       {"truncate", std::make_shared<TruncateArgGenerator>()}};
+  std::unordered_map<std::string, std::shared_ptr<ArgTypesGenerator>>
+      argTypesGenerators = {
+          {"plus", std::make_shared<PlusMinusArgTypesGenerator>()},
+          {"minus", std::make_shared<PlusMinusArgTypesGenerator>()},
+          {"multiply", std::make_shared<MultiplyArgTypesGenerator>()},
+          {"divide", std::make_shared<DivideArgTypesGenerator>()},
+          {"floor", std::make_shared<FloorAndRoundArgTypesGenerator>()},
+          {"round", std::make_shared<FloorAndRoundArgTypesGenerator>()},
+          {"mod", std::make_shared<ModulusArgTypesGenerator>()},
+          {"truncate", std::make_shared<TruncateArgTypesGenerator>()}};
 
   std::unordered_map<std::string, std::shared_ptr<ExprTransformer>>
       exprTransformers = {
@@ -121,6 +127,10 @@ int main(int argc, char** argv) {
           {"array_except", std::make_shared<SortArrayTransformer>()},
           {"map_keys", std::make_shared<SortArrayTransformer>()},
           {"map_values", std::make_shared<SortArrayTransformer>()}};
+
+  std::unordered_map<std::string, std::shared_ptr<ArgValuesGenerator>>
+      argValuesGenerators = {
+          {"json_parse", std::make_shared<JsonParseArgValuesGenerator>()}};
 
   std::shared_ptr<facebook::velox::memory::MemoryPool> rootPool{
       facebook::velox::memory::memoryManager()->addRootPool()};
@@ -139,7 +149,8 @@ int main(int argc, char** argv) {
       exprTransformers,
       {{"session_timezone", "America/Los_Angeles"},
        {"adjust_timestamp_to_session_timezone", "true"}},
-      argGenerators,
+      argTypesGenerators,
+      argValuesGenerators,
       referenceQueryRunner,
       std::make_shared<
           facebook::velox::fuzzer::SpecialFormSignatureGenerator>());

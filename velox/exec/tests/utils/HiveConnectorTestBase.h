@@ -116,7 +116,7 @@ class HiveConnectorTestBase : public OperatorTestBase {
           infoColumns = {});
 
   static std::shared_ptr<connector::hive::HiveTableHandle> makeTableHandle(
-      common::test::SubfieldFilters subfieldFilters = {},
+      common::SubfieldFilters subfieldFilters = {},
       const core::TypedExprPtr& remainingFilter = nullptr,
       const std::string& tableName = "hive_table",
       const RowTypePtr& dataColumns = nullptr,
@@ -175,6 +175,8 @@ class HiveConnectorTestBase : public OperatorTestBase {
   /// @param locationHandle Location handle for the table write.
   /// @param compressionKind compression algorithm to use for table write.
   /// @param serdeParameters Table writer configuration parameters.
+  /// @param ensureFiles When this option is set the HiveDataSink will always
+  /// create a file even if there is no data.
   static std::shared_ptr<connector::hive::HiveInsertTableHandle>
   makeHiveInsertTableHandle(
       const std::vector<std::string>& tableColumnNames,
@@ -187,7 +189,8 @@ class HiveConnectorTestBase : public OperatorTestBase {
       const std::optional<common::CompressionKind> compressionKind = {},
       const std::unordered_map<std::string, std::string>& serdeParameters = {},
       const std::shared_ptr<dwio::common::WriterOptions>& writerOptions =
-          nullptr);
+          nullptr,
+      const bool ensureFiles = false);
 
   static std::shared_ptr<connector::hive::HiveInsertTableHandle>
   makeHiveInsertTableHandle(
@@ -199,7 +202,8 @@ class HiveConnectorTestBase : public OperatorTestBase {
           dwio::common::FileFormat::DWRF,
       const std::optional<common::CompressionKind> compressionKind = {},
       const std::shared_ptr<dwio::common::WriterOptions>& writerOptions =
-          nullptr);
+          nullptr,
+      const bool ensureFiles = false);
 
   static std::shared_ptr<connector::hive::HiveColumnHandle> regularColumn(
       const std::string& name,

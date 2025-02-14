@@ -76,6 +76,25 @@ DEFINE_string(
     "vectors and expression SQL strings. This flag is ignored if "
     "velox_save_input_on_expression_any_failure_path is set.");
 
+DEFINE_bool(
+    force_eval_simplified,
+    false,
+    "Whether to overwrite queryCtx and force the "
+    "use of simplified expression evaluation path.");
+
+DEFINE_bool(
+    velox_experimental_save_input_on_fatal_signal,
+    false,
+    "This is an experimental flag only to be used for debugging "
+    "purposes. If set to true, serializes the input vector data and "
+    "all the SQL expressions in the ExprSet that is currently "
+    "executing, whenever a fatal signal is encountered. Enabling "
+    "this flag makes the signal handler async signal unsafe, so it "
+    "should only be used for debugging purposes. The vector and SQLs "
+    "are serialized to files in directories specified by either "
+    "'velox_save_input_on_expression_any_failure_path' or "
+    "'velox_save_input_on_expression_system_failure_path'");
+
 // TODO: deprecate this once all the memory leak issues have been fixed in
 // existing meta internal use cases.
 DEFINE_bool(
@@ -116,27 +135,34 @@ DEFINE_int32(
 
 namespace facebook::velox {
 void translateFlagsToGlobalConfig() {
-  config::globalConfig.memoryNumSharedLeafPools =
+  config::globalConfig().memoryNumSharedLeafPools =
       FLAGS_velox_memory_num_shared_leaf_pools;
-  config::globalConfig.memoryLeakCheckEnabled =
+  config::globalConfig().memoryLeakCheckEnabled =
       FLAGS_velox_memory_leak_check_enabled;
-  config::globalConfig.memoryPoolDebugEnabled =
+  config::globalConfig().memoryPoolDebugEnabled =
       FLAGS_velox_memory_pool_debug_enabled;
-  config::globalConfig.enableMemoryUsageTrackInDefaultMemoryPool =
+  config::globalConfig().enableMemoryUsageTrackInDefaultMemoryPool =
       FLAGS_velox_enable_memory_usage_track_in_default_memory_pool;
-  config::globalConfig.timeAllocations = FLAGS_velox_time_allocations;
-  config::globalConfig.memoryUseHugepages = FLAGS_velox_memory_use_hugepages;
-  config::globalConfig.suppressMemoryCapacityExceedingErrorMessage =
+  config::globalConfig().timeAllocations = FLAGS_velox_time_allocations;
+  config::globalConfig().memoryUseHugepages = FLAGS_velox_memory_use_hugepages;
+  config::globalConfig().suppressMemoryCapacityExceedingErrorMessage =
       FLAGS_velox_suppress_memory_capacity_exceeding_error_message;
-  config::globalConfig.memoryPoolCapacityTransferAcrossTasks =
+  config::globalConfig().memoryPoolCapacityTransferAcrossTasks =
       FLAGS_velox_memory_pool_capacity_transfer_across_tasks;
-  config::globalConfig.exceptionSystemStacktraceEnabled =
+  config::globalConfig().exceptionSystemStacktraceEnabled =
       FLAGS_velox_exception_system_stacktrace_enabled;
-  config::globalConfig.exceptionSystemStacktraceRateLimitMs =
+  config::globalConfig().exceptionSystemStacktraceRateLimitMs =
       FLAGS_velox_exception_system_stacktrace_rate_limit_ms;
-  config::globalConfig.exceptionUserStacktraceEnabled =
+  config::globalConfig().exceptionUserStacktraceEnabled =
       FLAGS_velox_exception_user_stacktrace_enabled;
-  config::globalConfig.exceptionUserStacktraceRateLimitMs =
+  config::globalConfig().exceptionUserStacktraceRateLimitMs =
       FLAGS_velox_exception_user_stacktrace_rate_limit_ms;
+  config::globalConfig().forceEvalSimplified = FLAGS_force_eval_simplified;
+  config::globalConfig().experimentalSaveInputOnFatalSignal =
+      FLAGS_velox_experimental_save_input_on_fatal_signal;
+  config::globalConfig().saveInputOnExpressionAnyFailurePath =
+      FLAGS_velox_save_input_on_expression_any_failure_path;
+  config::globalConfig().saveInputOnExpressionSystemFailurePath =
+      FLAGS_velox_save_input_on_expression_system_failure_path;
 }
 } // namespace facebook::velox

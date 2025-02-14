@@ -339,11 +339,39 @@ void serializeBiasVectorRanges(
   }
 }
 
+void serializeIPPrefixRanges(
+    const VectorPtr& vector,
+    const folly::Range<const IndexRange*>& ranges,
+    VectorStream* stream) {
+  auto wrappedVector = BaseVector::wrappedVectorShared(vector);
+  auto rowVector = wrappedVector->asUnchecked<RowVector>();
+  auto ip = rowVector->childAt(0)->asUnchecked<FlatVector<int128_t>>();
+  auto prefix = rowVector->childAt(1)->asUnchecked<FlatVector<int8_t>>();
+
+  for (int32_t i = 0; i < ranges.size(); ++i) {
+    auto begin = ranges[i].begin;
+    auto end = begin + ranges[i].size;
+    for (auto offset = begin; offset < end; ++offset) {
+      if (vector->isNullAt(offset)) {
+        stream->appendNull();
+        continue;
+      }
+      stream->appendNonNull();
+      stream->appendLength(ipaddress::kIPPrefixBytes);
+      stream->appendOne(
+          toJavaIPPrefixType(ip->valueAt(offset), prefix->valueAt(offset)));
+    }
+  }
+}
+
 void serializeRowVectorRanges(
     const VectorPtr& vector,
     const folly::Range<const IndexRange*>& ranges,
     VectorStream* stream,
     Scratch& scratch) {
+  if (isIPPrefixType(vector->type())) {
+    return serializeIPPrefixRanges(vector, ranges, stream);
+  }
   auto rowVector = vector->as<RowVector>();
   std::vector<IndexRange> childRanges;
   for (int32_t i = 0; i < ranges.size(); ++i) {
@@ -482,6 +510,47 @@ void appendStrings(
   }
 }
 
+void serializeIPPrefix(
+    const VectorPtr& vector,
+    const folly::Range<const vector_size_t*>& rows,
+    VectorStream* stream) {
+  auto wrappedVector = BaseVector::wrappedVectorShared(vector);
+  if (!vector->mayHaveNulls()) {
+    // No nulls, and because ipprefix are fixed size, just append the fixed
+    // lengths of 17 bytes
+    stream->appendLengths(nullptr, rows, rows.size(), [&](auto /*row*/) {
+      return ipaddress::kIPPrefixBytes;
+    });
+
+    auto rowVector = wrappedVector->asChecked<RowVector>();
+    auto ip = rowVector->childAt(0)->asChecked<FlatVector<int128_t>>();
+    auto prefix = rowVector->childAt(1)->asChecked<FlatVector<int8_t>>();
+    for (auto i = 0; i < rows.size(); ++i) {
+      // Append the first 16 bytes in reverse order because Java always stores
+      // the ipaddress porition as big endian whereas Velox stores it as little
+      auto javaIPPrefix =
+          toJavaIPPrefixType(ip->valueAt(rows[i]), prefix->valueAt(rows[i]));
+      stream->values().appendStringView(std::string_view(
+          (const char*)javaIPPrefix.data(), javaIPPrefix.size()));
+    }
+    return;
+  }
+
+  auto rowVector = wrappedVector->asChecked<RowVector>();
+  auto ip = rowVector->childAt(0)->asChecked<FlatVector<int128_t>>();
+  auto prefix = rowVector->childAt(1)->asChecked<FlatVector<int8_t>>();
+  for (auto i = 0; i < rows.size(); ++i) {
+    if (vector->isNullAt(rows[i])) {
+      stream->appendNull();
+      continue;
+    }
+    stream->appendNonNull();
+    stream->appendLength(ipaddress::kIPPrefixBytes);
+    stream->appendOne(
+        toJavaIPPrefixType(ip->valueAt(rows[i]), prefix->valueAt(rows[i])));
+  }
+}
+
 template <typename T, typename Conv = folly::Identity>
 void copyWords(
     uint8_t* destination,
@@ -578,6 +647,14 @@ void appendNonNull(
           numNonNull,
           values,
           toJavaUuidValue);
+    } else if (stream->isIpAddress()) {
+      copyWordsWithRows(
+          output,
+          rows.data(),
+          nonNullIndices,
+          numNonNull,
+          values,
+          reverseIpAddressByteOrder);
     } else {
       copyWordsWithRows(
           output, rows.data(), nonNullIndices, numNonNull, values);
@@ -608,6 +685,13 @@ void serializeFlatVector(
             output, rows.data(), rows.size(), rawValues, toJavaDecimalValue);
       } else if (stream->isUuid()) {
         copyWords(output, rows.data(), rows.size(), rawValues, toJavaUuidValue);
+      } else if (stream->isIpAddress()) {
+        copyWords(
+            output,
+            rows.data(),
+            rows.size(),
+            rawValues,
+            reverseIpAddressByteOrder);
       } else {
         copyWords(output, rows.data(), rows.size(), rawValues);
       }
@@ -760,6 +844,10 @@ void serializeConstantVector(
     const folly::Range<const vector_size_t*>& rows,
     VectorStream* stream,
     Scratch& scratch) {
+  if (isIPPrefixType(vector->type())) {
+    return serializeIPPrefix(vector, rows, stream);
+  }
+
   using T = typename KindToFlatVector<kind>::WrapperType;
   auto constVector = vector->as<ConstantVector<T>>();
   if (constVector->valueVector()) {
@@ -786,6 +874,9 @@ void serializeRowVector(
     const folly::Range<const vector_size_t*>& rows,
     VectorStream* stream,
     Scratch& scratch) {
+  if (isIPPrefixType(vector->type())) {
+    return serializeIPPrefix(vector, rows, stream);
+  }
   auto rowVector = vector->as<RowVector>();
   ScratchPtr<uint64_t, 4> nullsHolder(scratch);
   ScratchPtr<vector_size_t, 64> innerRowsHolder(scratch);
@@ -1076,6 +1167,9 @@ std::string_view typeToEncodingName(const TypePtr& type) {
     case TypeKind::MAP:
       return kMap;
     case TypeKind::ROW:
+      if (isIPPrefixType(type)) {
+        return kVariableWidth;
+      }
       return kRow;
     case TypeKind::UNKNOWN:
       return kByteArray;
