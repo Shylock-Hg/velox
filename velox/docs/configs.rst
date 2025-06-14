@@ -167,6 +167,11 @@ Generic Configuration
      - 0
      - Specifies the max number of input batches to prefetch to do index lookup ahead. If it is zero,
        then process one input batch at a time.
+   * - unnest_split_output_batch
+     - bool
+     - true
+     - If this is true, then the unnest operator might split output for each input batch based on the
+       output batch size control. Otherwise, it produces a single output for each input batch.
 
 .. _expression-evaluation-conf:
 
@@ -259,6 +264,11 @@ Memory Management
        memory limit for partial aggregation is automatically doubled up to `max_extended_partial_aggregation_memory`.
        This adaptation is disabled by default, since the value of `max_extended_partial_aggregation_memory` equals the
        value of `max_partial_aggregation_memory`. Specify higher value for `max_extended_partial_aggregation_memory` to enable.
+   * - query_memory_reclaimer_priority
+     - integer
+     - 2147483647
+     - Priority of the query in the memory pool reclaimer. Lower value means higher priority. This is used in
+       global arbitration victim selection.
 
 Spilling
 --------
@@ -734,6 +744,11 @@ Each query can override the config by setting corresponding query session proper
      - integer
      - 1024
      - Batch size used when writing into Parquet through Arrow bridge.
+   * - hive.parquet.writer.created-by
+     -
+     - string
+     - parquet-cpp-velox version 0.0.0
+     - Created-by value used when writing to Parquet.
 
 ``Amazon S3 Configuration``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1004,3 +1019,8 @@ Tracing
      - integer
      - 0
      - The max trace bytes limit. Tracing is disabled if zero.
+   * - query_trace_dry_run
+     - boolean
+     - false
+     - If true, we only collect the input trace for a given operator but without the actual
+       execution. This is used for crash debugging.
