@@ -1767,6 +1767,33 @@ TEST_F(TableScanTest, preloadEmptySplit) {
   assertQuery(op, filePaths, "SELECT * FROM tmp", 1);
 }
 
+TEST_F(TableScanTest, readAsLowerCase) {
+  auto rowType =
+      ROW({"Товары", "国Ⅵ", "\uFF21", "\uFF22"},
+          {BIGINT(), DOUBLE(), REAL(), INTEGER()});
+  auto vectors = makeVectors(10, 1'000, rowType);
+  auto filePath = TempFilePath::create();
+  writeToFile(filePath->getPath(), vectors);
+  createDuckDbTable(vectors);
+
+  // Test reading table with non-ascii names.
+  auto op = PlanBuilder()
+                .tableScan(
+                    ROW({"товары", "国ⅵ", "\uFF41", "\uFF42"},
+                        {BIGINT(), DOUBLE(), REAL(), INTEGER()}))
+                .planNode();
+  auto split =
+      exec::test::HiveConnectorSplitBuilder(filePath->getPath()).build();
+
+  AssertQueryBuilder(op, duckDbQueryRunner_)
+      .connectorSessionProperty(
+          kHiveConnectorId,
+          connector::hive::HiveConfig::kFileColumnNamesReadAsLowerCaseSession,
+          "true")
+      .split(split)
+      .assertResults("SELECT * FROM tmp");
+}
+
 TEST_F(TableScanTest, partitionedTableVarcharKey) {
   auto rowType = ROW({"c0", "c1"}, {BIGINT(), DOUBLE()});
   auto vectors = makeVectors(10, 1'000, rowType);
@@ -3031,6 +3058,7 @@ TEST_F(TableScanTest, bucketConversion) {
     return splits;
   };
   {
+    SCOPED_TRACE("Basic");
     auto outputType = ROW({"c1"}, {BIGINT()});
     auto plan = PlanBuilder().tableScan(outputType, {}, "", schema).planNode();
     std::vector<int64_t> c1;
@@ -3087,6 +3115,28 @@ TEST_F(TableScanTest, bucketConversion) {
     auto expected = makeRowVector({"c2", "c1"}, {data, data});
     AssertQueryBuilder(plan).splits(makeSplits()).assertResults(expected);
   }
+  {
+    SCOPED_TRACE("Dynamic filters");
+    auto outputType = ROW({"c1"}, {BIGINT()});
+    auto build = makeRowVector({"cc1"}, {makeFlatVector<int64_t>({2, 3})});
+    auto planNodeIdGenerator = std::make_shared<core::PlanNodeIdGenerator>();
+    core::PlanNodeId scanNodeId;
+    auto plan =
+        PlanBuilder(planNodeIdGenerator)
+            .tableScan(outputType, {}, "", schema)
+            .capturePlanNodeId(scanNodeId)
+            .hashJoin(
+                {"c1"},
+                {"cc1"},
+                PlanBuilder(planNodeIdGenerator).values({build}).planNode(),
+                "",
+                {"c1"})
+            .planNode();
+    auto expected = makeRowVector({makeConstant<int64_t>(2, 1)});
+    AssertQueryBuilder(plan)
+        .splits(scanNodeId, makeSplits())
+        .assertResults(expected);
+  }
 }
 
 TEST_F(TableScanTest, bucketConversionWithSubfieldPruning) {
@@ -3135,6 +3185,52 @@ TEST_F(TableScanTest, bucketConversionWithSubfieldPruning) {
     }
   }
   ASSERT_EQ(j, result->size());
+}
+
+TEST_F(TableScanTest, bucketConversionLazyColumn) {
+  auto vector = makeRowVector({
+      makeFlatVector<int32_t>({1, 3, 5}),
+      makeFlatVector<int64_t>({4, 4, 6}),
+  });
+  auto schema = asRowType(vector->type());
+  auto file = TempFilePath::create();
+  writeToFile(file->getPath(), {vector});
+  constexpr int kNewNumBuckets = 4;
+  std::vector<std::shared_ptr<connector::ConnectorSplit>> splits;
+  {
+    // First split requires bucket conversion.
+    std::vector<std::shared_ptr<HiveColumnHandle>> handles;
+    handles.push_back(makeColumnHandle("c0", INTEGER(), {}));
+    auto split = makeHiveConnectorSplit(file->getPath());
+    split->tableBucketNumber = 1;
+    split->bucketConversion = {kNewNumBuckets, 2, std::move(handles)};
+    splits.push_back(split);
+  }
+  // Second split no bucket conversion, and non-empty after filter.
+  vector = makeRowVector({
+      makeFlatVector<int32_t>({1, 3, 5}),
+      makeFlatVector<int64_t>({4, 5, 6}),
+  });
+  auto file2 = TempFilePath::create();
+  writeToFile(file2->getPath(), {vector});
+  splits.push_back(makeHiveConnectorSplit(file2->getPath()));
+  {
+    // Third split requires bucket conversion, empty after filter.
+    std::vector<std::shared_ptr<HiveColumnHandle>> handles;
+    handles.push_back(makeColumnHandle("c0", INTEGER(), {}));
+    auto split = makeHiveConnectorSplit(file->getPath());
+    split->tableBucketNumber = 3;
+    split->bucketConversion = {kNewNumBuckets, 2, std::move(handles)};
+    splits.push_back(split);
+  }
+  auto outputType = ROW({"c1"}, {BIGINT()});
+  auto plan =
+      PlanBuilder().tableScan(outputType, {"c1 = 5"}, "", schema).planNode();
+  auto expected = makeRowVector({makeConstant<int64_t>(5, 1)});
+  AssertQueryBuilder(plan)
+      .splits(splits)
+      .config(core::QueryConfig::kMaxSplitPreloadPerDriver, "0")
+      .assertResults(expected);
 }
 
 TEST_F(TableScanTest, integerNotEqualFilter) {
@@ -5652,5 +5748,53 @@ TEST_F(TableScanTest, statsBasedFilterReorderDisabled) {
       }
       ASSERT_EQ(tableScanStats.numSplits, numSplits);
     }
+  }
+}
+
+TEST_F(TableScanTest, prevBatchEmptyAdaptivity) {
+  auto rowType = ROW({"c0", "c1"}, {BIGINT(), VARCHAR()});
+
+  const vector_size_t size = 100;
+  const size_t stringBytes = 1024 * 1024;
+  const size_t preferredOutputBatchBytes = 10UL << 20;
+
+  const std::string sampleString(stringBytes, 'a');
+  StringView sampleStringView(sampleString);
+  auto rowVector = makeRowVector(
+      {makeFlatVector<int64_t>(
+           size,
+           [&](auto row) {
+             return row % 100 == 50 ? 51 : row % 100;
+           }), // so that the filter "c0 = 50" cannot rely on the min-max range
+               // to filter out all data in the data source even before the
+               // first batch is read
+       makeFlatVector<StringView>(
+           size, [&](auto /*unused*/) { return sampleStringView; })});
+
+  auto filePath = TempFilePath::create();
+  writeToFile(filePath->getPath(), rowVector);
+  createDuckDbTable({rowVector});
+
+  auto plan = PlanBuilder().tableScan(rowType, {"c0 = 50"}).planNode();
+  {
+    auto task = AssertQueryBuilder(duckDbQueryRunner_)
+                    .plan(plan)
+                    .split(makeHiveConnectorSplit(filePath->getPath()))
+                    .config(
+                        QueryConfig::kMaxOutputBatchRows,
+                        folly::to<std::string>(size * 4))
+                    .config(
+                        QueryConfig::kPreferredOutputBatchBytes,
+                        folly::to<std::string>(preferredOutputBatchBytes))
+                    .assertResults("SELECT * FROM tmp WHERE c0 = 50");
+    const auto opStats = task->taskStats().pipelineStats[0].operatorStats[0];
+    const auto numBatchesRead =
+        opStats.runtimeStats.at("dataSourceReadWallNanos").count - 1;
+    const auto batchSizeWithoutAdaptivity =
+        QueryConfig({}).preferredOutputBatchBytes() /
+        (sizeof(int64_t) + stringBytes + sizeof(StringView));
+    const auto numBatchesReadWithoutAdaptivity =
+        bits::divRoundUp(size, batchSizeWithoutAdaptivity);
+    EXPECT_GT(numBatchesReadWithoutAdaptivity, numBatchesRead);
   }
 }

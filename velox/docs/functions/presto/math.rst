@@ -375,6 +375,45 @@ Probability Functions: inverse_cdf
     The mean must be a real value and the scale must be a positive real value (both of type DOUBLE).
     The probability ``p`` must lie on the interval [0, 1].
 
+.. function:: inverse_f_cdf(df1, df2, p) -> double
+
+    Compute the inverse of the Fisher F cdf with a given ``df1`` (numerator degrees of freedom) and ``df2`` (denominator degrees of freedom) parameters
+    for the cumulative probability (p): P(N < n). The numerator and denominator df parameters must be positive real numbers.
+    The probability ``p`` must lie on the interval [0, 1].
+
+.. function:: inverse_normal_cdf(mean, sd, p) -> double
+
+    Compute the inverse of the Normal cdf with given mean and standard
+    deviation (sd) for the cumulative probability (p): P(N < n). The mean must be
+    a real value and the standard deviation must be a real and positive value (both of type DOUBLE).
+    The probability p must lie on the interval (0, 1).
+
+.. function:: inverse_gamma_cdf(shape, scale, p) -> double
+
+    Compute the inverse of the Gamma cdf with given shape and scale parameters for the cumulative
+    probability (p): P(N < n). The shape and scale parameters must be positive real values.
+    The probability p must lie on the interval [0, 1].
+
+.. function:: inverse_binomial_cdf(numberOfTrials, successProbability, p) -> int
+
+    Compute the inverse of the Binomial cdf with given numberOfTrials and successProbability (of a single trial) the
+    cumulative probability (p):  P(N <= n).
+    The successProbability and p must be real values in [0, 1] and the numberOfTrials must be
+    a positive integer.
+
+.. function:: inverse_poisson_cdf(lambda, p) -> integer
+
+    Compute the inverse of the Poisson cdf with given lambda (mean) parameter for the cumulative
+    probability (p). It returns the value of n so that: P(N <= n; lambda) = p.
+    The lambda parameter must be a positive real number (of type DOUBLE).
+    The probability p must lie on the interval [0, 1).
+
+.. function:: inverse_chi_squared_cdf(df, p) -> double
+
+    Compute the inverse of the Chi-square cdf with given df (degrees of freedom) parameter for the cumulative
+    probability (p): P(N < n). The df parameter must be positive real values.
+    The probability p must lie on the interval [0, 1].
+
 ====================================
 Statistical Functions
 ====================================

@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 
 #pragma once
 
@@ -30,6 +29,13 @@ struct NoisyCountAccumulator {
   // indicating that we have not updated it yet
   double noiseScale{-1.0};
 
+  // Add a field to store random seed
+  std::optional<int64_t> randomSeed{std::nullopt};
+
+  void setRandomSeed(int64_t seed) {
+    randomSeed = seed;
+  }
+
   void increaseCount(uint64_t value) {
     count = facebook::velox::checkedPlus<uint64_t>(count, value);
   }
@@ -41,14 +47,17 @@ struct NoisyCountAccumulator {
     noiseScale = newNoiseScale;
   }
 
-  static int32_t serializedSize() {
-    return sizeof(uint64_t) + sizeof(double);
+  static size_t serializedSize() {
+    return sizeof(uint64_t) + sizeof(double) +
+        sizeof(bool) /** has_random_seed flag */ + sizeof(int64_t);
   }
 
   void serialize(char* output) {
     common::OutputByteStream stream(output);
     stream.appendOne(count);
     stream.appendOne(noiseScale);
+    stream.appendOne(randomSeed.has_value());
+    stream.appendOne(randomSeed.has_value() ? randomSeed.value() : 0);
   }
 
   static NoisyCountAccumulator deserialize(const char* serialized) {
@@ -56,8 +65,13 @@ struct NoisyCountAccumulator {
 
     auto count = stream.read<uint64_t>();
     auto noiseScale = stream.read<double>();
+    auto hasRandomSeed = stream.read<bool>();
+    auto randomSeed = stream.read<int64_t>();
+    if (hasRandomSeed) {
+      return NoisyCountAccumulator{count, noiseScale, randomSeed};
+    }
 
-    return NoisyCountAccumulator{count, noiseScale};
+    return NoisyCountAccumulator{count, noiseScale, std::nullopt};
   }
 };
 
