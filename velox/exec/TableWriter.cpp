@@ -315,7 +315,7 @@ void TableWriter::updateStats(const connector::DataSink::Stats& stats) {
             currentTimeNs - createTimeUs_, RuntimeCounter::Unit::kNanos));
   }
   if (!stats.spillStats.empty()) {
-    *spillStats_.wlock() += stats.spillStats;
+    *spillStats_->wlock() += stats.spillStats;
   }
 }
 
@@ -473,7 +473,7 @@ const TypePtr& TableWriteTraits::contextColumnType() {
 }
 
 const RowTypePtr TableWriteTraits::outputType(
-    const std::shared_ptr<core::AggregationNode>& aggregationNode) {
+    const core::AggregationNodePtr& aggregationNode) {
   static const auto kOutputTypeWithoutStats =
       ROW({rowCountColumnName(), fragmentColumnName(), contextColumnName()},
           {rowCountColumnType(), fragmentColumnType(), contextColumnType()});

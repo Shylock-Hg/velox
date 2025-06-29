@@ -58,6 +58,13 @@ class ExprTest : public testing::Test, public VectorTestBase {
     parse::registerTypeResolver();
   }
 
+  void setQueryTimeZone(const std::string& timeZone) {
+    queryCtx_->testingOverrideConfigUnsafe({
+        {core::QueryConfig::kSessionTimezone, timeZone},
+        {core::QueryConfig::kAdjustTimestampToTimezone, "true"},
+    });
+  }
+
   core::TypedExprPtr parseExpression(
       const std::string& text,
       const RowTypePtr& rowType,
@@ -4986,8 +4993,14 @@ TEST_F(ExprTest, disabledeferredLazyLoading) {
 
 TEST_F(ExprTest, evaluateConstantExpression) {
   auto eval = [&](const std::string& sql) {
-    auto expr = parseExpression(sql, ROW({}));
-    return exec::evaluateConstantExpression(expr, pool());
+    auto expr = parseExpression(sql, ROW({"a"}, {BIGINT()}));
+    return exec::tryEvaluateConstantExpression(expr, pool(), queryCtx_);
+  };
+
+  auto evalNoThrow = [&](const std::string& sql) {
+    auto expr = parseExpression(sql, ROW({"a"}, {BIGINT()}));
+    return exec::tryEvaluateConstantExpression(
+        expr, pool(), queryCtx_, true /* supressEvaluationFailures */);
   };
 
   assertEqualVectors(eval("1 + 2"), makeConstant<int64_t>(3, 1));
@@ -4995,6 +5008,65 @@ TEST_F(ExprTest, evaluateConstantExpression) {
   assertEqualVectors(
       eval("transform(array[1, 2, 3], x -> (x * 2))"),
       makeArrayVectorFromJson<int64_t>({"[2, 4, 6]"}));
+
+  assertEqualVectors(
+      eval("transform(array[1, 2, 3], x -> (x * (3 - 1)))"),
+      makeArrayVectorFromJson<int64_t>({"[2, 4, 6]"}));
+
+  assertEqualVectors(
+      eval("transform(array[1, 2, 3], x -> 2)"),
+      makeArrayVectorFromJson<int64_t>({"[2, 2, 2]"}));
+
+  assertEqualVectors(
+      eval(
+          "try(coalesce(array_min_by(array[1, 2, 3], x -> x / 0), 0::INTEGER))"),
+      makeNullConstant(TypeKind::INTEGER, 1));
+
+  // Verify that constant folding takes into account query config.
+  setQueryTimeZone("America/Los_Angeles");
+  assertEqualVectors(
+      eval("date_format(from_unixtime(0.0), '%Y-%m-%d %H:%i')"),
+      makeConstant<std::string>("1969-12-31 16:00", 1));
+
+  setQueryTimeZone("America/New_York");
+  assertEqualVectors(
+      eval("date_format(from_unixtime(0.0), '%Y-%m-%d %H:%i')"),
+      makeConstant<std::string>("1969-12-31 19:00", 1));
+
+  EXPECT_TRUE(eval("a + 1") == nullptr);
+
+  EXPECT_TRUE(eval("rand() + 1.0") == nullptr);
+
+  EXPECT_TRUE(eval("transform(array[1, 2, 3], x -> (x * 2) + a)") == nullptr);
+
+  EXPECT_TRUE(eval("transform(array[1, 2, 3], x -> x + rand())") == nullptr);
+
+  VELOX_ASSERT_THROW(eval("5 / 0"), "division by zero");
+  EXPECT_TRUE(evalNoThrow("5 / 0") == nullptr);
+
+  VELOX_ASSERT_THROW(eval("1 + 5 / 0"), "division by zero");
+  EXPECT_TRUE(evalNoThrow("1 + 5 / 0") == nullptr);
+
+  VELOX_ASSERT_THROW(
+      eval("transform(array[1, 2, 3], x -> x / 0)"), "division by zero");
+  EXPECT_TRUE(evalNoThrow("transform(array[1, 2, 3], x -> x / 0)") == nullptr);
+}
+
+TEST_F(ExprTest, isDeterministic) {
+  auto isDeterministic = [&](const std::string& sql) {
+    SCOPED_TRACE(sql);
+    auto exprSet = compileExpression(sql, ROW({"c0"}, {ARRAY(DOUBLE())}));
+    return exprSet->expr(0)->isDeterministic();
+  };
+
+  EXPECT_TRUE(isDeterministic("cardinality(c0) + 5"));
+  EXPECT_TRUE(isDeterministic("transform(c0, x -> x + 5.0)"));
+  EXPECT_TRUE(isDeterministic("filter(c0, x -> (x < 5.0))"));
+
+  EXPECT_FALSE(isDeterministic("rand()"));
+  EXPECT_FALSE(isDeterministic("c0[1] + rand()"));
+  EXPECT_FALSE(isDeterministic("transform(c0, x -> x + rand())"));
+  EXPECT_FALSE(isDeterministic("filter(c0, x -> (x < rand()))"));
 }
 
 TEST_F(ExprTest, peelingOnDeterministicFunctionInNonDeterministicExpr) {
@@ -5012,6 +5084,22 @@ TEST_F(ExprTest, peelingOnDeterministicFunctionInNonDeterministicExpr) {
   // being processed by "plus" after peeling on dict_wrap's result.
   ASSERT_TRUE(stats.find("plus") != stats.end());
   ASSERT_EQ(stats["plus"].numProcessedRows, input->size() / 2);
+}
+
+TEST_F(ExprTest, lambdaConstantFolded) {
+  const auto makeTypedExpr =
+      [this](const std::string& text, const RowTypePtr& rowType) {
+        auto untyped = parse::parseExpr(text, {});
+        return core::Expressions::inferTypes(untyped, rowType, pool());
+      };
+
+  // Test the resource clear of lambda constant folding which relies on an
+  // uninitialized ExprSet for eval.
+  std::string expression =
+      "reduce(regexp_split('a,b,c,d,e,f,g,h',','), array[array['']], (acc, x) -> array[array[x]], (id) -> id)";
+  auto typedExpr = makeTypedExpr(expression, ROW({"c0"}, {INTEGER()}));
+  exec::ExprSet exprSet({typedExpr}, execCtx_.get());
+  exprSet.clear();
 }
 
 } // namespace

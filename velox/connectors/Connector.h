@@ -25,6 +25,7 @@
 #include "velox/common/caching/ScanTracker.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/core/ExpressionEvaluator.h"
+#include "velox/type/Filter.h"
 #include "velox/type/Subfield.h"
 #include "velox/vector/ComplexVector.h"
 
@@ -35,9 +36,6 @@ class Config;
 }
 namespace facebook::velox::wave {
 class WaveDataSource;
-}
-namespace facebook::velox::common {
-class Filter;
 }
 namespace facebook::velox::config {
 class ConfigBase;
@@ -104,6 +102,9 @@ class ColumnHandle : public ISerializable {
 
 using ColumnHandlePtr = std::shared_ptr<const ColumnHandle>;
 
+class ConnectorTableHandle;
+using ConnectorTableHandlePtr = std::shared_ptr<const ConnectorTableHandle>;
+
 class ConnectorTableHandle : public ISerializable {
  public:
   explicit ConnectorTableHandle(std::string connectorId)
@@ -133,14 +134,18 @@ class ConnectorTableHandle : public ISerializable {
 
   virtual folly::dynamic serialize() const override;
 
+  static ConnectorTableHandlePtr create(
+      const folly::dynamic& obj,
+      void* context);
+
+  static void registerSerDe();
+
  protected:
   folly::dynamic serializeBase(std::string_view name) const;
 
  private:
   const std::string connectorId_;
 };
-
-using ConnectorTableHandlePtr = std::shared_ptr<const ConnectorTableHandle>;
 
 /// Represents a request for writing to connector
 class ConnectorInsertTableHandle : public ISerializable {
@@ -246,6 +251,10 @@ class DataSource {
   virtual std::optional<RowVectorPtr> next(
       uint64_t size,
       velox::ContinueFuture& future) = 0;
+
+  virtual const common::SubfieldFilters* getFilters() const {
+    return nullptr;
+  }
 
   /// Add dynamically generated filter.
   /// @param outputChannel index into outputType specified in

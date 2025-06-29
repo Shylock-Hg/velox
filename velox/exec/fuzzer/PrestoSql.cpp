@@ -94,7 +94,7 @@ std::string toTypeSql(const TypePtr& type) {
     }
     default:
       if (type->isPrimitiveType()) {
-        return type->name();
+        return type->toString();
       }
       VELOX_UNSUPPORTED("Type is not supported: {}", type->toString());
   }
@@ -339,7 +339,7 @@ std::string toCallSql(const core::CallTypedExprPtr& call) {
 
 std::string toCastSql(const core::CastTypedExpr& cast) {
   std::stringstream sql;
-  if (cast.nullOnFailure()) {
+  if (cast.isTryCast()) {
     sql << "try_cast(";
   } else {
     sql << "cast(";

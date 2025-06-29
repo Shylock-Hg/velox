@@ -31,11 +31,20 @@ General Aggregate Functions
     inputs if :doc:`presto.array_agg.ignore_nulls <../../configs>` is set
     to false.
 
-.. function:: avg(x) -> double|real
+.. function:: avg(x) -> double|real|decimal
 
     Returns the average (arithmetic mean) of all non-null input values.
     When x is of type REAL, the result type is REAL.
-    For all other input types, the result type is DOUBLE.
+    When x is an integer or a DOUBLE, the result is DOUBLE.
+    When x is of type DECIMAL(p, s), the result type is DECIMAL(p, s).
+    Note: For the overflow cases, Velox returns a result when Presto throws "Decimal overflow". ::
+        SELECT AVG(col)
+        FROM ( VALUES
+        	  (CAST(9999999999999999999999999999999.9999999 AS DECIMAL(38,7))),
+              (CAST(9999999999999999999999999999999.9999999 AS DECIMAL(38,7)))
+             ) AS t(col);
+        -- Velox: 9999999999999999999999999999999.9999999
+        -- Presto: Decimal overflow
 
 .. function:: bool_and(boolean) -> boolean
 
@@ -709,11 +718,13 @@ Statistical Aggregate Functions
 Noisy Aggregate Functions
 -------------------------
 
-.. function:: noisy_count_if_gaussian(col, noise_scale) -> bigint
+.. function:: noisy_count_if_gaussian(col, noise_scale[, random_seed]) -> bigint
 
     Counts the ``TRUE`` values in ``col`` and then adds a normally distributed random double
     value with 0 mean and standard deviation of ``noise_scale`` to the true count.
     The noisy count is post-processed to be non-negative and rounded to bigint.
+
+    If provided, ``random_seed`` is used to seed the random number generator. Otherwise, noise is drawn from a secure random.
 
     ::
 
@@ -723,6 +734,27 @@ Noisy Aggregate Functions
     .. note::
 
         Unlike :func:`!count_if`, this function returns ``NULL`` when the (true) count is 0.
+
+.. function:: noisy_count_gaussian(col, noise_scale[, random_seed]) -> bigint
+
+    Counts the non-null values in ``col`` and then adds a normally distributed random double
+    value with 0 mean and standard deviation of ``noise_scale`` to the true count.
+    The noisy count is post-processed to be non-negative and rounded to bigint.
+
+    If provided, ``random_seed`` is used to seed the random number generator. Otherwise, noise is drawn from a secure random.
+
+    ::
+
+        SELECT noisy_count_gaussian(orderkey, 20.0) FROM tpch.tiny.lineitem; -- 60181 (1 row)
+        SELECT noisy_count_gaussian(orderkey, 20.0) FROM tpch.tiny.lineitem WHERE false; -- NULL (1 row)
+
+
+.. function:: noisy_sum_gaussian(col, noise_scale) -> double
+
+    Calculates the sum over the input values in ``col`` and then adds a normally distributed
+    random double value with 0 mean and standard deviation of ``noise_scale``.
+
+
 
 Miscellaneous
 -------------

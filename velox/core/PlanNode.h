@@ -31,7 +31,7 @@ namespace facebook::velox::core {
 class PlanNodeVisitor;
 class PlanNodeVisitorContext;
 
-typedef std::string PlanNodeId;
+using PlanNodeId = std::string;
 
 /// Generic representation of InsertTable
 struct InsertTableHandle {
@@ -301,7 +301,7 @@ class PlanNode : public ISerializable {
       std::stringstream& stream,
       size_t indentationSize) const;
 
-  const std::string id_;
+  const PlanNodeId id_;
 };
 
 using PlanNodePtr = std::shared_ptr<const PlanNode>;
@@ -498,6 +498,8 @@ class ArrowStreamNode : public PlanNode {
   std::shared_ptr<ArrowArrayStream> arrowStream_;
 };
 
+using ArrowStreamNodePtr = std::shared_ptr<const ArrowStreamNode>;
+
 class TraceScanNode final : public PlanNode {
  public:
   TraceScanNode(
@@ -614,6 +616,8 @@ class TraceScanNode final : public PlanNode {
   const RowTypePtr outputType_;
 };
 
+using TraceScanNodePtr = std::shared_ptr<const TraceScanNode>;
+
 class FilterNode : public PlanNode {
  public:
   FilterNode(const PlanNodeId& id, TypedExprPtr filter, PlanNodePtr source)
@@ -705,6 +709,8 @@ class FilterNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
   const TypedExprPtr filter_;
 };
+
+using FilterNodePtr = std::shared_ptr<const FilterNode>;
 
 class AbstractProjectNode : public PlanNode {
  public:
@@ -875,6 +881,8 @@ class ProjectNode : public AbstractProjectNode {
 
   static PlanNodePtr create(const folly::dynamic& obj, void* context);
 };
+
+using ProjectNodePtr = std::shared_ptr<const ProjectNode>;
 
 class TableScanNode : public PlanNode {
  public:
@@ -1294,6 +1302,8 @@ class AggregationNode : public PlanNode {
   const RowTypePtr outputType_;
 };
 
+using AggregationNodePtr = std::shared_ptr<const AggregationNode>;
+
 inline std::ostream& operator<<(
     std::ostream& out,
     const AggregationNode::Step& step) {
@@ -1322,7 +1332,7 @@ class TableWriteNode : public PlanNode {
       const PlanNodeId& id,
       const RowTypePtr& columns,
       const std::vector<std::string>& columnNames,
-      std::shared_ptr<AggregationNode> aggregationNode,
+      AggregationNodePtr aggregationNode,
       std::shared_ptr<InsertTableHandle> insertTableHandle,
       bool hasPartitioningScheme,
       RowTypePtr outputType,
@@ -1379,7 +1389,7 @@ class TableWriteNode : public PlanNode {
       return *this;
     }
 
-    Builder& aggregationNode(std::shared_ptr<AggregationNode> aggregationNode) {
+    Builder& aggregationNode(AggregationNodePtr aggregationNode) {
       aggregationNode_ = std::move(aggregationNode);
       return *this;
     }
@@ -1449,7 +1459,7 @@ class TableWriteNode : public PlanNode {
     std::optional<PlanNodeId> id_;
     std::optional<RowTypePtr> columns_;
     std::optional<std::vector<std::string>> columnNames_;
-    std::optional<std::shared_ptr<AggregationNode>> aggregationNode_;
+    std::optional<AggregationNodePtr> aggregationNode_;
     std::optional<std::shared_ptr<InsertTableHandle>> insertTableHandle_;
     std::optional<bool> hasPartitioningScheme_;
     std::optional<RowTypePtr> outputType_;
@@ -1498,7 +1508,7 @@ class TableWriteNode : public PlanNode {
   }
 
   /// Optional aggregation node for column statistics collection
-  std::shared_ptr<AggregationNode> aggregationNode() const {
+  const AggregationNodePtr& aggregationNode() const {
     return aggregationNode_;
   }
 
@@ -1520,12 +1530,14 @@ class TableWriteNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
   const RowTypePtr columns_;
   const std::vector<std::string> columnNames_;
-  const std::shared_ptr<AggregationNode> aggregationNode_;
+  const AggregationNodePtr aggregationNode_;
   const std::shared_ptr<InsertTableHandle> insertTableHandle_;
   const bool hasPartitioningScheme_;
   const RowTypePtr outputType_;
   const connector::CommitStrategy commitStrategy_;
 };
+
+using TableWriteNodePtr = std::shared_ptr<const TableWriteNode>;
 
 class TableWriteMergeNode : public PlanNode {
  public:
@@ -1535,7 +1547,7 @@ class TableWriteMergeNode : public PlanNode {
   TableWriteMergeNode(
       const PlanNodeId& id,
       RowTypePtr outputType,
-      std::shared_ptr<AggregationNode> aggregationNode,
+      AggregationNodePtr aggregationNode,
       PlanNodePtr source)
       : PlanNode(id),
         aggregationNode_(std::move(aggregationNode)),
@@ -1564,7 +1576,7 @@ class TableWriteMergeNode : public PlanNode {
       return *this;
     }
 
-    Builder& aggregationNode(std::shared_ptr<AggregationNode> aggregationNode) {
+    Builder& aggregationNode(AggregationNodePtr aggregationNode) {
       aggregationNode_ = std::move(aggregationNode);
       return *this;
     }
@@ -1594,12 +1606,12 @@ class TableWriteMergeNode : public PlanNode {
    private:
     std::optional<PlanNodeId> id_;
     std::optional<RowTypePtr> outputType_;
-    std::optional<std::shared_ptr<AggregationNode>> aggregationNode_;
+    std::optional<AggregationNodePtr> aggregationNode_;
     std::optional<PlanNodePtr> source_;
   };
 
   /// Optional aggregation node for column statistics collection
-  std::shared_ptr<AggregationNode> aggregationNode() const {
+  AggregationNodePtr aggregationNode() const {
     return aggregationNode_;
   }
 
@@ -1625,10 +1637,12 @@ class TableWriteMergeNode : public PlanNode {
  private:
   void addDetails(std::stringstream& stream) const override;
 
-  const std::shared_ptr<AggregationNode> aggregationNode_;
+  const AggregationNodePtr aggregationNode_;
   const std::vector<PlanNodePtr> sources_;
   const RowTypePtr outputType_;
 };
+
+using TableWriteMergeNodePtr = std::shared_ptr<const TableWriteMergeNode>;
 
 /// For each input row, generates N rows with M columns according to
 /// specified 'projections'. 'projections' is an N x M matrix of expressions:
@@ -1732,6 +1746,8 @@ class ExpandNode : public PlanNode {
   const RowTypePtr outputType_;
   const std::vector<std::vector<TypedExprPtr>> projections_;
 };
+
+using ExpandNodePtr = std::shared_ptr<const ExpandNode>;
 
 /// Plan node used to implement aggregations over grouping sets. Duplicates
 /// the aggregation input for each set of grouping keys. The output contains
@@ -1901,6 +1917,8 @@ class GroupIdNode : public PlanNode {
   const std::string groupIdName_;
 };
 
+using GroupIdNodePtr = std::shared_ptr<const GroupIdNode>;
+
 class ExchangeNode : public PlanNode {
  public:
   ExchangeNode(
@@ -1986,6 +2004,8 @@ class ExchangeNode : public PlanNode {
   const RowTypePtr outputType_;
   const VectorSerde::Kind serdeKind_;
 };
+
+using ExchangeNodePtr = std::shared_ptr<const ExchangeNode>;
 
 class MergeExchangeNode : public ExchangeNode {
  public:
@@ -2086,6 +2106,8 @@ class MergeExchangeNode : public ExchangeNode {
   const std::vector<FieldAccessTypedExprPtr> sortingKeys_;
   const std::vector<SortOrder> sortingOrders_;
 };
+
+using MergeExchangeNodePtr = std::shared_ptr<const MergeExchangeNode>;
 
 class LocalMergeNode : public PlanNode {
  public:
@@ -2193,6 +2215,8 @@ class LocalMergeNode : public PlanNode {
   const std::vector<SortOrder> sortingOrders_;
 };
 
+using LocalMergeNodePtr = std::shared_ptr<const LocalMergeNode>;
+
 /// Calculates partition number for each row of the specified vector.
 class PartitionFunction {
  public:
@@ -2286,7 +2310,7 @@ class LocalPartitionNode : public PlanNode {
 
     VELOX_USER_CHECK_NOT_NULL(partitionFunctionSpec_);
 
-    for (auto i = 1; i < sources_.size(); ++i) {
+    for (size_t i = 1; i < sources_.size(); ++i) {
       VELOX_USER_CHECK(
           *sources_[i]->outputType() == *sources_[0]->outputType(),
           "All sources of the LocalPartitionedNode must have the same output type: {} vs. {}.",
@@ -2415,6 +2439,8 @@ class LocalPartitionNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
   const PartitionFunctionSpecPtr partitionFunctionSpec_;
 };
+
+using LocalPartitionNodePtr = std::shared_ptr<const LocalPartitionNode>;
 
 class PartitionedOutputNode : public PlanNode {
  public:
@@ -2644,6 +2670,8 @@ class PartitionedOutputNode : public PlanNode {
   const VectorSerde::Kind serdeKind_;
   const RowTypePtr outputType_;
 };
+
+using PartitionedOutputNodePtr = std::shared_ptr<const PartitionedOutputNode>;
 
 FOLLY_ALWAYS_INLINE std::ostream& operator<<(
     std::ostream& out,
@@ -3060,6 +3088,8 @@ class HashJoinNode : public AbstractJoinNode {
   const bool nullAware_;
 };
 
+using HashJoinNodePtr = std::shared_ptr<const HashJoinNode>;
+
 /// Represents inner/outer/semi/anti merge joins. Translates to an
 /// exec::MergeJoin operator. Assumes that both left and right input data is
 /// sorted on the join keys. A separate pipeline that puts its output into
@@ -3130,6 +3160,8 @@ class MergeJoinNode : public AbstractJoinNode {
   static PlanNodePtr create(const folly::dynamic& obj, void* context);
 };
 
+using MergeJoinNodePtr = std::shared_ptr<const MergeJoinNode>;
+
 struct IndexLookupCondition : public ISerializable {
   /// References to an index table column.
   FieldAccessTypedExprPtr key;
@@ -3149,6 +3181,7 @@ struct IndexLookupCondition : public ISerializable {
 
   virtual std::string toString() const = 0;
 };
+
 using IndexLookupConditionPtr = std::shared_ptr<IndexLookupCondition>;
 
 /// Represents IN-LIST index lookup condition: contains('list', 'key'). 'list'
@@ -3176,6 +3209,7 @@ struct InIndexLookupCondition : public IndexLookupCondition {
  private:
   void validate() const;
 };
+
 using InIndexLookupConditionPtr = std::shared_ptr<InIndexLookupCondition>;
 
 /// Represents BETWEEN index lookup condition: 'key' between 'lower' and
@@ -3211,6 +3245,7 @@ struct BetweenIndexLookupCondition : public IndexLookupCondition {
  private:
   void validate() const;
 };
+
 using BetweenIndexLookupConditionPtr =
     std::shared_ptr<BetweenIndexLookupCondition>;
 
@@ -3374,6 +3409,8 @@ class IndexLookupJoinNode : public AbstractJoinNode {
   const std::vector<IndexLookupConditionPtr> joinConditions_;
 };
 
+using IndexLookupJoinNodePtr = std::shared_ptr<const IndexLookupJoinNode>;
+
 /// Returns true if 'planNode' is index lookup join node.
 bool isIndexLookupJoin(const core::PlanNode* planNode);
 
@@ -3518,6 +3555,8 @@ class NestedLoopJoinNode : public PlanNode {
   const RowTypePtr outputType_;
 };
 
+using NestedLoopJoinNodePtr = std::shared_ptr<const NestedLoopJoinNode>;
+
 // Represents the 'SortBy' node in the plan.
 class OrderByNode : public PlanNode {
  public:
@@ -3659,6 +3698,8 @@ class OrderByNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
 };
 
+using OrderByNodePtr = std::shared_ptr<const OrderByNode>;
+
 class TopNNode : public PlanNode {
  public:
   TopNNode(
@@ -3786,6 +3827,8 @@ class TopNNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
 };
 
+using TopNNodePtr = std::shared_ptr<const TopNNode>;
+
 class LimitNode : public PlanNode {
  public:
   // @param isPartial Boolean indicating whether Limit node generates partial
@@ -3909,6 +3952,8 @@ class LimitNode : public PlanNode {
   const bool isPartial_;
   const std::vector<PlanNodePtr> sources_;
 };
+
+using LimitNodePtr = std::shared_ptr<const LimitNode>;
 
 /// Expands arrays and maps into separate columns. Arrays are expanded into a
 /// single column, and maps are expanded into two columns (key, value). Can be
@@ -4036,6 +4081,14 @@ class UnnestNode : public PlanNode {
     return unnestVariables_;
   }
 
+  const std::vector<std::string>& unnestNames() const {
+    return unnestNames_;
+  }
+
+  const std::optional<std::string>& ordinalityName() const {
+    return ordinalityName_;
+  }
+
   bool withOrdinality() const {
     return ordinalityName_.has_value();
   }
@@ -4058,6 +4111,8 @@ class UnnestNode : public PlanNode {
   const std::vector<PlanNodePtr> sources_;
   RowTypePtr outputType_;
 };
+
+using UnnestNodePtr = std::shared_ptr<const UnnestNode>;
 
 /// Checks that input contains at most one row. Return that row as is. If
 /// input is empty, returns a single row with all values set to null. If input
@@ -4127,6 +4182,8 @@ class EnforceSingleRowNode : public PlanNode {
 
   const std::vector<PlanNodePtr> sources_;
 };
+
+using EnforceSingleRowNodePtr = std::shared_ptr<const EnforceSingleRowNode>;
 
 /// Adds a new column named `idName` at the end of the input columns
 /// with unique int64_t value per input row.
@@ -4233,6 +4290,8 @@ class AssignUniqueIdNode : public PlanNode {
   RowTypePtr outputType_;
   std::shared_ptr<std::atomic_int64_t> uniqueIdCounter_;
 };
+
+using AssignUniqueIdNodePtr = std::shared_ptr<const AssignUniqueIdNode>;
 
 /// PlanNode used for evaluating Sql window functions.
 /// All window functions evaluated in the operator have the same
@@ -4481,6 +4540,8 @@ class WindowNode : public PlanNode {
   const RowTypePtr outputType_;
 };
 
+using WindowNodePtr = std::shared_ptr<const WindowNode>;
+
 /// Optimized version of a WindowNode for a single row_number function with an
 /// optional limit and no sorting.
 /// The output of this node contains all input columns followed by an optional
@@ -4615,6 +4676,8 @@ class RowNumberNode : public PlanNode {
   const RowTypePtr outputType_;
 };
 
+using RowNumberNodePtr = std::shared_ptr<const RowNumberNode>;
+
 /// The MarkDistinct operator marks unique rows based on distinctKeys.
 /// The result is put in a new markerName column alongside the original input.
 /// @param markerName Name of the output mask channel.
@@ -4724,6 +4787,8 @@ class MarkDistinctNode : public PlanNode {
 
   const RowTypePtr outputType_;
 };
+
+using MarkDistinctNodePtr = std::shared_ptr<const MarkDistinctNode>;
 
 /// Optimized version of a WindowNode for a single row_number function with a
 /// limit over sorted partitions.
@@ -4902,6 +4967,8 @@ class TopNRowNumberNode : public PlanNode {
 
   const RowTypePtr outputType_;
 };
+
+using TopNRowNumberNodePtr = std::shared_ptr<const TopNRowNumberNode>;
 
 class PlanNodeVisitorContext {
  public:

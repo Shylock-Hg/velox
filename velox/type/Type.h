@@ -1979,7 +1979,7 @@ static inline T to(const U& value) {
 }
 
 template <>
-inline Timestamp to(const std::string& value) {
+inline Timestamp to(const std::string&) {
   return Timestamp(0, 0);
 }
 
@@ -2004,7 +2004,7 @@ inline std::string to(const velox::StringView& value) {
 }
 
 template <>
-inline std::string to(const ComplexType& value) {
+inline std::string to(const ComplexType&) {
   return std::string("ComplexType");
 }
 
@@ -2025,6 +2025,10 @@ using CastOperatorPtr = std::shared_ptr<const CastOperator>;
 class variant;
 class AbstractInputGenerator;
 
+namespace memory {
+class MemoryPool;
+} // namespace memory
+
 using AbstractInputGeneratorPtr = std::shared_ptr<AbstractInputGenerator>;
 using FuzzerGenerator = folly::detail::DefaultGenerator;
 
@@ -2032,6 +2036,7 @@ struct InputGeneratorConfig {
   // TODO: hook up the rest options in VectorFuzzer::Options.
   size_t seed_;
   double nullRatio_;
+  memory::MemoryPool* pool_;
 };
 
 /// Associates custom types with their custom operators to be the payload in

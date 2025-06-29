@@ -46,9 +46,12 @@ velox_add_library(
   ReduceAgg.cpp
   RegisterAggregateFunctions.cpp
   NoisyCountIfGaussianAggregate.cpp
+  NoisyCountGaussianAggregate.cpp
+  NoisySumGaussianAggregate.cpp
   SetAggregates.cpp
   SumAggregate.cpp
   SumDataSizeForStatsAggregate.cpp
+  TDigestAggregate.cpp
   VarianceAggregates.cpp)
 
 velox_link_libraries(
