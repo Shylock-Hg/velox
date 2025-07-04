@@ -941,6 +941,16 @@ bool ArrayVectorBase::hasOverlappingRanges(
   return false;
 }
 
+void ArrayVectorBase::ensureNullRowsEmpty() {
+  if (!rawNulls_) {
+    return;
+  }
+  auto* offsets = offsets_->asMutable<vector_size_t>();
+  auto* sizes = sizes_->asMutable<vector_size_t>();
+  bits::forEachUnsetBit(
+      rawNulls_, 0, size(), [&](auto i) { offsets[i] = sizes[i] = 0; });
+}
+
 void ArrayVectorBase::validateArrayVectorBase(
     const VectorValidateOptions& options,
     vector_size_t minChildVectorSize) const {
@@ -1650,12 +1660,17 @@ MapVectorPtr MapVector::updateImpl(
     }
     if (newNulls.get() == nulls().get()) {
       newNulls = allocateNulls(size(), pool());
-      bits::andBits(
-          newNulls->asMutable<uint64_t>(),
-          rawNulls(),
-          other.nulls(),
-          0,
-          size());
+      if (!rawNulls()) {
+        bits::copyBits(
+            other.nulls(), 0, newNulls->asMutable<uint64_t>(), 0, size());
+      } else {
+        bits::andBits(
+            newNulls->asMutable<uint64_t>(),
+            rawNulls(),
+            other.nulls(),
+            0,
+            size());
+      }
     } else {
       bits::andBits(newNulls->asMutable<uint64_t>(), other.nulls(), 0, size());
     }
@@ -1714,7 +1729,7 @@ MapVectorPtr MapVector::updateImpl(
       auto size = vector->sizeAt(ii);
       for (vector_size_t j = 0; j < size; ++j) {
         auto jj = offset + j;
-        VELOX_DCHECK(!keys[k].isNullAt(jj));
+        VELOX_CHECK(!keys[k].isNullAt(jj), "Map key cannot be null");
         mapRow.insert(&keys[k], jj, k);
       }
     }

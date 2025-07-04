@@ -15,6 +15,8 @@
 FROM quay.io/pypa/manylinux_2_28_x86_64:latest
 
 COPY scripts/setup-helper-functions.sh /
+COPY scripts/setup-common.sh /
+COPY scripts/setup-versions.sh /
 COPY scripts/setup-manylinux.sh /
 
 # Build static folly to reduce wheel size (folly.so is ~120M)
@@ -28,4 +30,3 @@ RUN mkdir build && ( cd build && bash /setup-manylinux.sh ) && rm -rf build && \
         dnf clean all
 
 ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH"
-

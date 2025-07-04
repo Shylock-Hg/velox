@@ -478,6 +478,10 @@ class QueryConfig {
   static constexpr const char* kQueryTraceTaskRegExp =
       "query_trace_task_reg_exp";
 
+  /// If true, we only collect the input trace for a given operator but without
+  /// the actual execution.
+  static constexpr const char* kQueryTraceDryRun = "query_trace_dry_run";
+
   /// Config used to create operator trace directory. This config is provided to
   /// underlying file system and the config is free form. The form should be
   /// defined by the underlying file system.
@@ -603,6 +607,12 @@ class QueryConfig {
   static constexpr const char* kIndexLookupJoinMaxPrefetchBatches =
       "index_lookup_join_max_prefetch_batches";
 
+  /// If this is true, then the index join operator might split output for each
+  /// input batch based on the output batch size control. Otherwise, it tries to
+  /// produce a single output for each input batch.
+  static constexpr const char* kIndexLookupJoinSplitOutput =
+      "index_lookup_join_split_output";
+
   // Max wait time for exchange request in seconds.
   static constexpr const char* kRequestDataSizesMaxWaitSec =
       "request_data_sizes_max_wait_sec";
@@ -621,6 +631,29 @@ class QueryConfig {
   /// as json element names when casting a row to json.
   static constexpr const char* kFieldNamesInJsonCastEnabled =
       "field_names_in_json_cast_enabled";
+
+  /// If this is true, then operators that evaluate expressions will track their
+  /// stats and return them as part of their operator stats. Tracking these
+  /// stats can be expensive (especially if operator stats are retrieved
+  /// frequently) and this allows the user to explicitly enable it.
+  static constexpr const char* kOperatorTrackExpressionStats =
+      "operator_track_expression_stats";
+
+  /// If this is true, then the unnest operator might split output for each
+  /// input batch based on the output batch size control. Otherwise, it produces
+  /// a single output for each input batch.
+  static constexpr const char* kUnnestSplitOutput = "unnest_split_output";
+
+  /// Priority of the query in the memory pool reclaimer. Lower value means
+  /// higher priority. This is used in global arbitration victim selection.
+  static constexpr const char* kQueryMemoryReclaimerPriority =
+      "query_memory_reclaimer_priority";
+
+  /// The max number of input splits to listen to by SplitListener per table
+  /// scan node per worker. It's up to the SplitListener implementation to
+  /// respect this config.
+  static constexpr const char* kMaxNumSplitsListenedTo =
+      "max_num_splits_listened_to";
 
   bool selectiveNimbleReaderEnabled() const {
     return get<bool>(kSelectiveNimbleReaderEnabled, false);
@@ -963,6 +996,10 @@ class QueryConfig {
     return get<std::string>(kQueryTraceTaskRegExp, "");
   }
 
+  bool queryTraceDryRun() const {
+    return get<bool>(kQueryTraceDryRun, false);
+  }
+
   std::string opTraceDirectoryCreateConfig() const {
     return get<std::string>(kOpTraceDirectoryCreateConfig, "");
   }
@@ -1109,6 +1146,10 @@ class QueryConfig {
     return get<uint32_t>(kIndexLookupJoinMaxPrefetchBatches, 0);
   }
 
+  bool indexLookupJoinSplitOutput() const {
+    return get<bool>(kIndexLookupJoinSplitOutput, true);
+  }
+
   std::string shuffleCompressionKind() const {
     return get<std::string>(kShuffleCompressionKind, "none");
   }
@@ -1132,6 +1173,23 @@ class QueryConfig {
 
   bool isFieldNamesInJsonCastEnabled() const {
     return get<bool>(kFieldNamesInJsonCastEnabled, false);
+  }
+
+  bool operatorTrackExpressionStats() const {
+    return get<bool>(kOperatorTrackExpressionStats, false);
+  }
+
+  bool unnestSplitOutput() const {
+    return get<bool>(kUnnestSplitOutput, true);
+  }
+
+  int32_t queryMemoryReclaimerPriority() const {
+    return get<int32_t>(
+        kQueryMemoryReclaimerPriority, std::numeric_limits<int32_t>::max());
+  }
+
+  int32_t maxNumSplitsListenedTo() const {
+    return get<int32_t>(kMaxNumSplitsListenedTo, 0);
   }
 
   template <typename T>
